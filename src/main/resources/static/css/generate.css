@@ -1,0 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Baloo+Da+2&display=swap');
+
+body {
+	text-align: center;
+	font-family: 'Baloo Da 2', cursive;
+	background-image: url("../images/blue-snow.png");
+}
+
+.container {
+	display: grid;
+	grid-template-columns: 1fr 1fr 1fr;
+	width: 50%;
+	align-items: center;
+	margin: 0px auto 15px auto;
+	font-size: 25px;
+}
+
+.container .first {
+	justify-self: end;
+	color: #34A65F;
+}
+
+.container .second {
+	justify-self: center;
+	text-decoration: underline;
+	color: #CC231E;
+}
+
+.container .third {
+	justify-self: start;
+	color: #34A65F;
+}
+
+hr.solid {
+  border-top: 3px solid #CC231E;
+  margin-top: 20px;
+  margin-bottom: 20px;
+}

@@ -1,0 +1,38 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+	<meta charset="UTF-8">
+    <title>Secret Santa</title>
+    <link rel="stylesheet" href="css/addpeople.css">
+</head>
+<body>
+
+    <h2>Secret Santa Matchmaking</h2>
+    <p>Enter people's names (Avoid duplicate names):</p>
+    
+    <form action="addpeople" method="post">
+    	<input type="text" name="name">
+    	<input type="submit" value="Add Person">
+    </form>
+    
+    <hr class="solid">
+    
+    <div th:each="person : ${people}" class="container">
+   		<span th:text="${person.name}" class="first"></span>
+   		<form action="deletepeople" method="post" class="second">
+   			<input type="hidden" name="id" th:value="${person.id}">
+   			<input type="submit" value="delete">
+   		</form>
+    </div>
+    
+    <hr class="solid">
+    
+    <p>When you are done, click below to generate matches!</p>
+    <p>(If there is an odd number of people, one person will be alone.)</p>
+    
+    <form action="generate" method="get">
+    	<input type="submit" value="Generate Matches!">
+    </form> 
+    
+</body>
+</html>

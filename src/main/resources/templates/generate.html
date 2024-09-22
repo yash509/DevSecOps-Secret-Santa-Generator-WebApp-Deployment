@@ -1,0 +1,21 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+	<meta charset="UTF-8">
+    <title>Secret Santa</title>
+    <link rel="stylesheet" href="css/generate.css">
+</head>
+<body>
+	<h2>Secret Santa Matchmaking</h2>
+	<p>Below are the matches!</p>
+	<p>Go back to the previous page and click generate to get new matches!</p>
+	
+	<hr class="solid">
+	
+	<div th:each="match : ${matches}" class="container">
+		<span th:text="${match.key}" class="first"></span>
+		<span class="second">gives a gift to</span>
+		<span th:text="${match.value}" class="third"></span>
+	</div>
+</body>
+</html>
