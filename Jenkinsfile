@@ -284,7 +284,7 @@ pipeline {
         stage('Deploy to Docker Container'){
             steps{
                 //dir('BMI Calculator (JS)') {
-                    sh "docker run -d --name secret-santa -p 5000:80 ${IMAGE_NAME}:${TAG}" 
+                    sh "docker run -d --name secret-santa -p 3000:3000 ${IMAGE_NAME}:${TAG}" 
                 //}
             }
         }
