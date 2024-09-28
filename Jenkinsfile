@@ -4,9 +4,19 @@ pipeline {
         jdk 'jdk17'
         nodejs 'node16'
     }
+
+    parameters {
+        choice(name: 'DEPLOY_ENV', choices: ['blue', 'green'], description: 'Choose which environment to deploy: Blue or Green')
+        choice(name: 'DOCKER_TAG', choices: ['blue', 'green'], description: 'Choose the Docker image tag for the deployment')
+        booleanParam(name: 'SWITCH_TRAFFIC', defaultValue: false, description: 'Switch traffic between Blue and Green')
+    }
+    
     environment {
+        IMAGE_NAME = "yash5090/secret-santa"
+        TAG = "${params.DOCKER_TAG}" 
         SCANNER_HOME = tool 'sonar-scanner'
     }
+    
     stages {
         stage('clean workspace') {
             steps {
@@ -22,12 +32,14 @@ pipeline {
                 sh 'terraform --version'
                 sh 'trivy --version'
                 sh 'docker --version'
+                sh 'ansible --version'
+                sh 'snyk --version'
             }
         }
         
         stage('Checkout from Git') {                        
             steps {                                       
-                git branch: 'main', url: 'https://github.com/yash509/DevSecOps-Secret-Santa-Generator.git'
+                git branch: 'main', url: 'https://github.com/yash509/DevSecOps-secret-santa-Deployment.git'
             }
         }
         
@@ -106,14 +118,6 @@ pipeline {
             }
         }
         
-        stage('Install Dependencies') {
-            steps {
-                //dir('Band Website') {
-                    sh "npm install"
-                //}
-            }
-        }
-        
         stage('OWASP File System SCAN') {
             steps {
                 //dir('Band Website') {
@@ -150,13 +154,23 @@ pipeline {
                 }   
             }
         }
+
+        stage('Snyk Loaded Vulnerability Test') {
+        steps {
+                withCredentials([string(credentialsId: 'snyk', variable: 'snyk')]) {
+                   sh 'snyk auth $snyk'
+                   sh 'snyk test --all-projects --report || true'
+                   sh 'snyk code test --json-file-output=vuln1.json > snykloadedvulnerabilityreport.txt || true '
+                }   
+            }
+        } 
         
         stage("Docker Image Building"){
             steps{
                 script{
                     //dir('Band Website') {
                         withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){   
-                            sh "docker build -t secret-santa ." 
+                            sh "docker build -t ${IMAGE_NAME}:${TAG} ." 
                             
                         //}
                     }
@@ -169,7 +183,7 @@ pipeline {
                 script{
                     //dir('Band Website') {
                         withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){
-                            sh "docker tag secret-santa yash5090/secret-santa:latest " 
+                            sh "docker tag ${IMAGE_NAME}:${TAG} ${IMAGE_NAME}:${TAG}" 
                         //}
                     }
                 }
@@ -178,7 +192,7 @@ pipeline {
         
         stage('Docker Image Scanning') { 
             steps { 
-                sh "trivy image --format table -o trivy-image-report.html yash5090/secret-santa:latest" 
+                sh "trivy image --format table -o trivy-image-report.html ${IMAGE_NAME}:${TAG}" 
             } 
         } 
         
@@ -187,7 +201,7 @@ pipeline {
                 script{
                     //dir('Band Website') {
                         withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
-                            sh "docker push yash5090/secret-santa:latest "
+                            sh "docker push ${IMAGE_NAME}:${TAG}"
                         //}
                     }
                 }
@@ -198,19 +212,28 @@ pipeline {
             steps {
                 script{
                    withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){
-                       sh 'docker-scout quickview yash5090/secret-santa:latest'
-                       sh 'docker-scout cves yash5090/secret-santa:latest'
-                       sh 'docker-scout recommendations yash5090/secret-santa:latest'
-                       sh 'docker-scout attestation yash5090/secret-santa:latest'
+                       sh "docker-scout quickview ${IMAGE_NAME}:${TAG}"
+                       sh "docker-scout cves ${IMAGE_NAME}:${TAG}"
+                       sh "docker-scout recommendations ${IMAGE_NAME}:${TAG}"
+                       sh "docker-scout attestation ${IMAGE_NAME}:${TAG}"
                    }
                 }   
             }
         }
+
+        stage('Snyk Docker Image Vulnerability Scannning') {
+        steps {
+                withCredentials([string(credentialsId: 'snyk', variable: 'snyk')]) {
+                   sh 'snyk auth $snyk'
+                   sh "snyk container test ${IMAGE_NAME}:${TAG} > snykvulnerabilityreport.txt --report || true"
+                }
+            }
+        }    
         
         stage("TRIVY"){
             steps{
                 //dir('Band Website') {
-                    sh "trivy image yash5090/secret-santa:latest > trivyimage.txt"   
+                    sh "trivy image ${IMAGE_NAME}:${TAG} > trivyimage.txt"   
                 //}
             }
         }
@@ -219,7 +242,7 @@ pipeline {
             steps {
                 script{
                   withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){
-                      sh 'docker-scout sbom --format list yash5090/secret-santa:latest' // docker-scout sbom yash5090/secret-santa:latest
+                      sh "docker-scout sbom --format list ${IMAGE_NAME}:${TAG}" // docker-scout sbom ${IMAGE_NAME}:${TAG} :latest
                     }
                 }   
             }
@@ -261,19 +284,19 @@ pipeline {
         stage('Deploy to Docker Container'){
             steps{
                 //dir('BMI Calculator (JS)') {
-                    sh 'docker run -d --name secret-santa -p 3000:3000 yash5090/secret-santa:latest' 
+                    sh "docker run -d --name secret-santa -p 5000:80 ${IMAGE_NAME}:${TAG}" 
                 //}
             }
         }
 
-       stage ("Verify the Docker Deployments") {
+        stage ("Verify the Docker Deployments") {
             steps{
                 sh "docker images -a"
                 sh "docker ps -a"
              }
         }
 
-        stage("Sanity Check") {
+        stage("Sanity Check for Shifting to Production") {
             steps {
                 input "Should we ship to prod?"
             }
@@ -283,16 +306,47 @@ pipeline {
             steps{
                 script{
                     //dir('K8S') {
+                        def deploymentFile = ""
+                        if (params.DEPLOY_ENV == 'blue') {
+                            deploymentFile = 'app-deployment-blue.yaml'
+                        } else {
+                            deploymentFile = 'app-deployment-green.yaml'
+                        }
+                        
                         withKubeConfig(caCertificate: '', clusterName: '', contextName: '', credentialsId: 'k8s', namespace: '', restrictKubeConfigAccess: false, serverUrl: '') {
-                                sh 'kubectl apply -f deployment.yaml'
+                                sh "kubectl apply -f ${deploymentFile}"
                                 sh 'kubectl apply -f service.yaml'
+                                sh 'kubectl apply -f job.yaml'
+                                sh 'kubectl apply -f pv.yaml'
+                                sh 'kubectl apply -f pvc.yaml'
+                                sh 'kubectl apply -f nwp.yaml'
+                                sh 'kubectl apply -f ingress.yaml'
                         //}
                     }
                 }
             }
         }
+
+        stage('Switch Traffic Between Blue & Green Environment') {
+            when {
+                expression { return params.SWITCH_TRAFFIC }
+            }
+            steps {
+                script {
+                    def newEnv = params.DEPLOY_ENV
+
+                    // Always switch traffic based on DEPLOY_ENV
+                    withKubeConfig(caCertificate: '', clusterName: '', contextName: '', credentialsId: 'k8s', namespace: '', restrictKubeConfigAccess: false, serverUrl: '') {
+                        sh '''
+                            kubectl patch service secret-santa-service -p "{\\"spec\\": {\\"selector\\": {\\"app\\": \\"secret-santa\\", \\"version\\": \\"''' + newEnv + '''\\"}}}"
+                        '''
+                    }
+                    echo "Traffic has been switched to the ${newEnv} environment."
+                }
+            }
+        }
         
-         stage('Verify the Kubernetes Deployments') { 
+        stage('Verify the Kubernetes Deployments') { 
             steps { 
                 withKubeConfig(caCertificate: '', clusterName: '', contextName: '', credentialsId: 'k8s', namespace: '', restrictKubeConfigAccess: false, serverUrl: '') { 
                     sh "kubectl get all "
@@ -301,7 +355,8 @@ pipeline {
                     sh "kubectl get ns"
                 } 
             } 
-        } 
+        }
+              
         stage('Deployment Done') {
             steps {
                 echo 'Deployed Succcessfully...'
@@ -338,7 +393,7 @@ pipeline {
                 from: 'jenkins@example.com', 
                 replyTo: 'jenkins@example.com', 
                 mimeType: 'text/html', 
-                attachmentsPattern: 'trivy-image-report.html, trivyfs.txt, trivyimage.txt') 
+                attachmentsPattern: 'trivy-image-report.html, trivyfs.txt, trivyimage.txt, snykvulnerabilityreport.txt, snykloadedvulnerabilityreport.txt') 
             } 
         } 
     }
