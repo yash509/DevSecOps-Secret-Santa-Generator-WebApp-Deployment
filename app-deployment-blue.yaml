@@ -18,7 +18,7 @@ spec:
       - name: secret-santa
         image: yash5090/secret-santa:blue # Adjust the image tag for the blue version
         ports:
-        - containerPort: 5000
+        - containerPort: 3000
         # env:
         # - name: SPRING_DATASOURCE_URL
         #   value: jdbc:mysql://mysql-service:3306/secret-santadb?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
